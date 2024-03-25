@@ -2,15 +2,15 @@
 import multiprocessing as mp
 import numpy as np
 
-from sklearn.svm import SVC
-from sklearn.linear_model import LogisticRegression
 from sklearn.base import clone
 from sklearn.preprocessing import StandardScaler
 
-from sklearn.model_selection import cross_validate, train_test_split, StratifiedKFold
+from sklearn.model_selection import cross_validate, train_test_split
+from sklearn.metrics import mean_squared_error
 from sklearn.utils import resample
 
 from iwal import *
+from DOE import *
 
 def QBC_Disagreement(pred_ys, type = 'KL'):
     """
@@ -46,8 +46,12 @@ def UncertaintySample(
     (np.ndarray) The utility vector that should be maximized to find the next index
     """
     active_model = clf.fit(train_x, train_y)
-    prob_y = active_model.predict_proba(test_x)
-    entropy = prob_y*np.log2(prob_y+1e-20)
+    try:
+        uncertainty = active_model.predict_proba(test_x)
+    except:
+        uncertainty = np.sum(test_x@np.linalg.pinv(test_x.T@test_x)*test_x, axis=1)
+        uncertainty = uncertainty[:, np.newaxis]
+    entropy = uncertainty*np.log2(uncertainty+1e-20)
     entropy = -np.sum(entropy, axis = 1)
     return entropy
 
@@ -267,7 +271,6 @@ def ChooseNextIndex(train_x, train_y, test_x, test_y, clf,
         'DBS': DensitySampling,
         'IWAL': NoStrategy
     }
-    print(method)
     if method in querry_strategies:
         method_func = querry_strategies[method]
     else:
@@ -368,14 +371,67 @@ def UpdateTrainTest(train_x, train_y, test_x, test_y, index, add_to_train):
 
     return train_x, train_y, test_x, test_y
 
+def InitialSplit(x: np.ndarray, y: np.ndarray,
+                seed: int,
+                stratify_data: np.ndarray=None,
+                init_method: str=None,
+                init_frac: float=None
+                ):
+    """
+    Simulates active learning using the designated active learning method.
+    Input:
+    x (np.ndarray): data (features)
+    y (np.ndarray): label of the data
+    seed (int): The random seed for splitting the data into train/test.
+    stratify_data (np.ndarray): The data to use for stratifying when performing train_test_split.    
+    init_method (str): if "DOE" uses DOE to initialize. Otherwise does a stratified train-test split.
+    init_frac (float): Value between 0 and 1. Proportion of data to use for initial model.
+    end_frac (float): value between 0 and 1. Proportion of data to use for final model after active learning.
+    """
+    if init_method == "DOE":
+        _, starting_k = DOE(x, y, int(init_frac*x.shape[0]), seed=seed, cap=5000, threshold=1e-8, metric=A_optimal)
+        mask = np.ones(x.shape[0])
+        mask[starting_k] = False
+        mask = np.array(mask, dtype=bool)
+        train_x, train_y = x[starting_k], y[starting_k]
+        test_x, test_y = x[mask], y[mask]
+
+    else:
+        train_x, test_x, train_y, test_y = train_test_split(x,y, train_size = init_frac,
+                                                             shuffle=True, stratify = stratify_data, random_state = seed)        
+    return train_x, test_x, train_y, test_y
+
+
+def CrossValLog(clf, train_x, train_y, test_x, test_y, cv_metrics, params: dict[str, np.ndarray]=None):
+    """
+    Log the results from cross-validating the training set data.
+    """
+    cv_res = cross_validate(clf, train_x, train_y, params = params, scoring = cv_metrics)
+    res = [np.mean(cv_res['test_'+cv_metric]) for cv_metric in cv_metrics]
+
+    return res
+
+def TestLog(clf, train_x, train_y, test_x, test_y, cv_metrics, params: dict[str, np.ndarray]=None):
+    """
+    Logs the results from analyzing the unlabeled test dataset.
+    """
+    clf.fit(train_x, train_y)
+    pred_y = clf.predict(test_x)
+    res = mean_squared_error(test_y, pred_y)
+    return [res]
+
 def SimulateAL_MP(x: np.ndarray, y: np.ndarray,
                 method: str, seed: int, clf: any ,cv_metrics: list[str],
                 stratify_data: np.ndarray=None,
-                conn: mp.connection.Connection = None,
+                init_method: str=None,
+                init_frac: float=None,
+                end_frac: float=None,
+                logging_func: any=None,
                 modality: str = 'aggressive',
                 threshold: float = 0.5,
                 k: int = 50,
-                pmin: float = 0.1
+                pmin: float = 0.1,
+                conn: mp.connection.Connection = None,
                 ):
     """
     Simulates active learning using the designated active learning method.
@@ -388,90 +444,67 @@ def SimulateAL_MP(x: np.ndarray, y: np.ndarray,
         QBC: Querry by committee
         ERM: Expected Risk Minimization
         IWAL: Importance Weighted Active Learning
-    seed (int): The random seed for splitting the data into train/test.
+    seed (int): The random seed for splitting the data into train/test.    
     clf (SKlearn classifier): The classifier to use
     cv_metrics (list[str]): Input arguments to the scoring argument of sklearns cross validation.
+    init_method (str): if "DOE" uses DOE to initialize. Otherwise does a stratified train-test split.
+    init_frac (float): Value between 0 and 1. Proportion of data to use for initial model.
+    end_frac (float): value between 0 and 1. Proportion of data to use for final model after active learning.
+    logging_func (function): used to calculate the stuff to log. 
     stratify_data (np.ndarray): The data to use for stratifying when performing train_test_split.
     modality (str): aggressive or mellow
     conn (mp.connection.PipeConnection): A connector that sends data.
     threshold (float): value between 0 and 1. Used for thresholding when using mellow active learning.
     k (int): Number of bootstrapped samples to use.
     pmin (float): Minimum sampling chance to be used with IWAL.
-    
 
     Output:
     Returns the accuracy and loss logs across the iterations of the active learning simulation
     """
-    print(f'My method is: {method}')
 
-    # clf = SVC(probability=True)
     preprocess = StandardScaler()
     x = preprocess.fit_transform(x)
-    # clf = LogisticRegression()
     rng = np.random.default_rng(seed) # Set the seed for the random number generator
     np.random.seed(seed)
     b = x.shape[0]//5
 
-    if method != 'IWAL':
-        train_x, test_x, train_y, test_y = train_test_split(x,y, train_size = 0.2,
-                                                             shuffle=True, stratify = stratify_data, random_state = seed)
-        iwal_weights=  None
-    else:
-        # Since first b samples are added for sure
-        # We can just use train_test_split to preallocate the starting b labeled points.
-        train_x, test_x, train_y, test_y = train_test_split(x,y, train_size = b,
-                                                             shuffle=True, stratify = stratify_data, random_state = seed)
+    train_x, test_x, train_y, test_y = InitialSplit(x, y, seed, stratify_data=stratify_data,
+                                    init_method = init_method, init_frac = init_frac)
+
+    iwal_weights=  None
+    if method == 'IWAL':
         iwal_weights = np.ones(train_x.shape[0])*pmin
 
     densities = None
     if method == 'DBS':
         densities = CalculateDensity(test_x)
-    # iwal_weights = None
-    # if method == 'IWAL':
-    #     iwal_weights = np.array([])
-        
-    # acc_log, loss_log, size_log = [], [], []
+
     size_log = []
-    logs = [[] for _ in cv_metrics]
-    n_iters = test_y.shape[0] # Number of samples in the test set
-    # print(n_iters)
-    # cv = StratifiedKFold(n_splits = 5, shuffle=True, random_state=seed)
+    logs = []
+    # n_iters = test_y.shape[0] # Number of samples in the test set
+    n_iters = int(end_frac*x.shape[0])-train_x.shape[0]
 
     for _ in range(n_iters):
-        # print(f'{_}/{n_iters}', end = '\r')
-        if train_x.shape[0] >= int(x.shape[0]*0.2):
-            if method == 'IWAL':
-                res = cross_validate(clf, train_x, train_y,
-                    params = {'sample_weight': iwal_weights},
-                    scoring = cv_metrics)            
-            else:
-                res = cross_validate(clf, train_x, train_y,
-                                     scoring = cv_metrics)
-            
-            for idx, cv_metric in enumerate(cv_metrics):
-                logs[idx].append(np.mean(res[f'test_{cv_metric}']))
-            # acc_log.append(np.mean(res['test_accuracy']))
-            # loss_log.append(-np.mean(res['test_neg_log_loss']))
-            size_log.append(train_x.shape[0])
+        param = None
+        if method == 'IWAL':
+            param = {'sample_weight': iwal_weights}
+        
+        res = logging_func(clf, train_x, train_y, test_x, test_y, cv_metrics, param)
+        logs.append(res)
+        size_log.append(train_x.shape[0])
 
-        print(f'The Method is: {method}')
         train_x, train_y , test_x, test_y, densities, iwal_weights = UpdateLabeledData(train_x, train_y, test_x, test_y, clf,
                     modality = modality, threshold = threshold,
                     densities = densities, iwal_weights=iwal_weights,
                     method = method, b=b, k = k , pmin = pmin, rng = rng)
-    
-    if method == 'IWAL':
-        res = cross_validate(clf, train_x, train_y,
-                    params = {'sample_weight': iwal_weights},
-                    scoring = cv_metrics)            
-    else:
-        res = cross_validate(clf, train_x, train_y,
-                    scoring = cv_metrics)
-        
-    for idx, cv_metric in enumerate(cv_metrics):
-        logs[idx].append(np.mean(res[f'test_{cv_metric}']))
 
-    # print('\n I MADE IT!')
+    param = None    
+    if method == 'IWAL':
+        param = {'sample_weight': iwal_weights}
+    res = logging_func(clf, train_x, train_y, test_x, test_y, cv_metrics, param)
+
+    logs.append(res)
+
     if conn is not None:
         conn.send(logs)
     else:

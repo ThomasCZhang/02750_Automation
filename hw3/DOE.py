@@ -48,7 +48,7 @@ def DOE(X, Y, k, seed, cap, threshold, metric):
     k (int): The number of samples to take from X.
     seed (int): The seed for the numpy random generator
     cap (int): The maximum number of cycles to run DOE.
-    optimality (function): The function for calculating the metric to be maximized.
+    metric (function): The function for calculating the metric to be maximized.
 
     Output:
     samps (np.ndarray): A k x d matrix. The chosen samples from X.
@@ -89,7 +89,8 @@ def DOE(X, Y, k, seed, cap, threshold, metric):
             weights = 1/weights
             weights /= np.sum(weights)
 
-        new_idx = rng.choice(viable_idx, p=weights)
+        # new_idx = rng.choice(viable_idx, p=weights)
+        new_idx = viable_idx[np.argmax(weights)]
         new_k = current_k.copy()
         new_k[replace_idx] = new_idx
         new_x = X[new_k]
