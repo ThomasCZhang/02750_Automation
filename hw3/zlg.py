@@ -13,6 +13,7 @@ def Similarity(X_lab: np.ndarray, X_unlab: np.ndarray, sigma: float=None) -> np.
     """
     x = np.concatenate((X_lab, X_unlab), axis = 0)
     num_samples = x.shape[0]
+
     similarity_matrix = np.zeros((num_samples,num_samples))
     for i in range(num_samples-1):
         delta_X = np.sum(np.power(x[i+1:,:] - x[i,:],2), axis = 1)
@@ -20,7 +21,8 @@ def Similarity(X_lab: np.ndarray, X_unlab: np.ndarray, sigma: float=None) -> np.
         similarity_matrix[i+1:,i] = delta_X[np.newaxis, :]
 
     if sigma is None:
-        sigma = np.sqrt(np.max(similarity_matrix))
+        # sigma = np.sqrt(np.max(similarity_matrix))
+        sigma = np.std(x)
 
     similarity_matrix /= -sigma**2
 
@@ -81,80 +83,105 @@ def SolveHarmonics(laplacian: np.ndarray, y_lab: np.ndarray) -> float:
     Estimates the harmonic of unlabled data. These are also the predicted labels of the unlabeled data.
     Inputs:
     laplacian (np.ndarray): N x N matrix. The laplacian matrix. N = total number of samples (labeled and unlabeled).
-    y_lab (np.ndarray): M x 1 matrix. The labels of the labeled data. M = number of labeled samples.
+    y_lab (np.ndarray): M length array. The labels of the labeled data. M = number of labeled samples.
 
     Outputs:
-    harmonics (np.ndarray). A (N-M) x 1 matrix. The estimated mean label of the unlabeled data.
+    harmonics (np.ndarray). A (N-M) length array. The estimated mean label of the unlabeled data.
     inv_laplacian_unlab (np.ndarray). A (N-M) x (N-M) matrix. The laplacian submatrix corresponding to unlabeled data..
     """
 
     num_labeled = y_lab.shape[0]
+    laplace_uu = laplacian[num_labeled:, num_labeled:]
+
     try:
-        inv_laplacian_unlab = np.linalg.inv(laplacian[num_labeled:, num_labeled:])
+        harmonics = -np.linalg.inv(laplace_uu)@laplacian[num_labeled:, :num_labeled]@y_lab
     except:
-        print('Unlabled portion of Laplacian has no inverse. Using pseudo-inverse.')
-        inv_laplacian_unlab = np.linalg.pinv(laplacian[num_labeled:, num_labeled:])
+        harmonics = -np.linalg.pinv(laplace_uu)@laplacian[num_labeled:, :num_labeled]@y_lab
 
-    harmonics = -inv_laplacian_unlab@laplacian[num_labeled:, :num_labeled]@y_lab
-    return harmonics, inv_laplacian_unlab
+    return harmonics, laplace_uu
 
-def CalculateRisk(probs: np.ndarray) -> float:
+def CalculateRisk(prob_matrix: np.ndarray) -> float:
     """
     Calculates the risk given a vector of probabilities.
     Input:
-    probs (np.ndarray): N x 1 vector. A vector of probabilities that the label is 1.
+    prob_matrix (np.ndarray): N x N matrix. A vector of probabilities that the label is 1. Each column corresponds to the
+        predictions from one model.
     
     Output:
-    (float): The risk based on the probability vector.
+    (float): N length array. The risks based on each probability vector. Each risk corresponds to one of the models.
     """
-    probs = np.stack((probs, 1-probs),axis = 1)
-    risk = np.sum(np.min(probs, axis = 1))
+    probs = np.stack((prob_matrix, 1-prob_matrix),axis = -1)
+    risk = np.sum(np.min(probs, axis = -1), axis = 0)
     return risk
 
-def UpdateProbs(probs: np.ndarray, inv_laplace_unlab: np.ndarray, k: int, lab: int) -> np.ndarray:
+def UpdateProbs(probs: np.ndarray, inv_laplace_uu: np.ndarray, lab: int) -> np.ndarray:
     """
     Updates the probabilties for the unlabeld samples under the assumtion that unlabeled sample number "k" is added to the
     labeled data with the label "lab".
     Input:
-    probs (np.ndarray): N x 1 array. The original probabilities for the unlabeled data.
-    laplace_unlab (np.ndarray): N x N array. The unlabeled portion of the Laplacian matrix.
-    k (int): The index of the unlabeled sample to be added.
+    probs (np.ndarray): N length array. The original probabilities for the unlabeled data.
+    inv_laplace_uu (np.ndarray): N x N array. The pseudo-inverted unlabeled portion of the Laplacian matrix.
     lab (int): 0 or 1. The label to be assigned to the unlabeled data.
     
     Output:
-    (np.ndarray): The new probabilities.
+    (np.ndarray): N x N probability array. Each column is the probabilities for one model. The new probabilities.
     """
 
-    new_probs = probs + (lab - probs[k])*inv_laplace_unlab[:, k]/inv_laplace_unlab[k,k]
+    new_probs = probs[:, np.newaxis] + (lab - probs)*inv_laplace_uu/inv_laplace_uu.diagonal() 
+
+    # if np.isnan(new_probs).any():
+    #     for val in inv_laplace_uu.diagonal():
+    #         print(val)
+    #     raise Exception
     return new_probs
 
-def CalculateUpdatedRisks(probs: np.ndarray, inv_laplace_unlab: np.ndarray) -> np.ndarray:
+def CalculateUpdatedRisks(probs: np.ndarray, inv_laplace_uu: np.ndarray) -> np.ndarray:
     """
     Calculates the risk of adding an unlabled sample to the labeled data for all unlabeled samples.
     Input:
-    probs (np.ndarray): N x 1 array. The predictions of the current unlabled data.
-    laplace_unlab (np.ndarray): The unlabeled portion of the laplacian matrix.
+    probs (np.ndarray): N length array. The predictions of the current unlabled data.
+    inv_laplace_uu (np.ndarray): The pseudo-inverted unlabeled portion of the laplacian matrix.
 
     Ouput:
     (np.ndarray): Length N array. The estimated risk for each of the unlabled samples to the labled set.
     """
-    num_unlab = probs.shape[0]
-    risks = []
-    for i in range(num_unlab):
-        new_probs_0 = UpdateProbs(probs, inv_laplace_unlab, i, 0)
-        new_probs_1 = UpdateProbs(probs, inv_laplace_unlab, i, 1)
-        risk_0 = CalculateRisk(new_probs_0)
-        risk_1 = CalculateRisk(new_probs_1)
-        risks.append((1-probs[i])*risk_0 + probs[i]*risk_1)
-    risks = np.array(risks)
+    new_probs_0 = UpdateProbs(probs, inv_laplace_uu, 0)
+    new_probs_1 = UpdateProbs(probs, inv_laplace_uu, 1)
+    risk_0 = CalculateRisk(new_probs_0)
+    risk_1 = CalculateRisk(new_probs_1)
+    risks = (1-probs)*risk_0 + probs*risk_1
     return risks
+
+def InitFromTestAndTrain(train_x, train_y, test_x, t=None, n=10):
+    """
+    Initializes the harmonics and the unlabeled portion of the laplacian matrix.
+    Input:
+    train_x (np.ndarray): Training data. 
+    train_y (np.ndarray): Training labels.
+    test_x (np.ndarray): Test data.
+    t (float): Cutoff for whether edge in graph exists. If W[i,j] > t then the edge exists. Otherwise there is no 
+        edge connecting node i to node j.
+        If t is None. Then instead of using a cutoff. The largest n values in a row are kept while the rest are set to
+        0.
+    n (int): The minimum number of neighbors each vertex will have. Only used if t is None.
+
+    Output:
+    probs (np.ndarray): The harmonics (probabilities) of the unlabeled data.
+    laplace_uu: The inverse of the unlabeled portion of the laplacian.
+    """
+    similarity = Similarity(train_x, test_x)
+    weights = BuildGraphAsMatrix(similarity, t, n)
+    d_matrix = ConstructD(weights)
+    laplacian = ConstructLaplacian(weights,d_matrix)
+    probs, laplace_uu = SolveHarmonics(laplacian,train_y)
+    return probs, laplace_uu
 
 def ZLGOneIter(train_x: np.ndarray,
                 train_y: np.ndarray,
                 test_x: np.ndarray,
                 test_y: np.ndarray,
                 probs: np.ndarray,
-                inv_laplace_unlab:np.ndarray) -> tuple[np.ndarray]:
+                laplace_uu:np.ndarray) -> tuple[np.ndarray]:
     """
     Calculates the risk of adding an unlabled sample to the labeled data for all unlabeled samples.
     Input:
@@ -166,22 +193,25 @@ def ZLGOneIter(train_x: np.ndarray,
     laplace_unlab (np.ndarray): The unlabeled portion of the laplacian matrix.
 
     Ouput:
-    tuple[np.ndarray]: Updated train_x, train_y, test_x, test_y, probs, and inv_laplace_unlab.
+    tuple[np.ndarray]: Updated train_x, train_y, test_x, test_y, probs, and laplace_uu.
     """
-    risks = CalculateUpdatedRisks(probs, inv_laplace_unlab)
-    min_idx = np.argmin(risks) # Minimizing expected risk
+    try:
+        inv_laplace_uu = np.linalg.inv(laplace_uu)
+    except:
+        inv_laplace_uu = np.linalg.pinv(laplace_uu)
 
-    probs = UpdateProbs(probs, inv_laplace_unlab, min_idx, test_y[min_idx])
-    probs = np.delete(probs, min_idx, axis = 0)
-    inv_laplace_unlab = np.delete(inv_laplace_unlab, min_idx, axis = 0)
-    inv_laplace_unlab = np.delete(inv_laplace_unlab, min_idx, axis = 1)
+    inv_laplace_uu = inv_laplace_uu + np.diag(1e-30*np.ones(inv_laplace_uu.shape[0]))
+
+    risks = CalculateUpdatedRisks(probs, inv_laplace_uu)
+    min_idx = np.argmin(risks) # Minimizing expected risk
 
     train_x = np.vstack((train_x, test_x[min_idx]))
     train_y = np.append(train_y, test_y[min_idx])
     test_x = np.delete(test_x, min_idx, axis = 0)
     test_y = np.delete(test_y, min_idx, axis = 0)
 
-    return train_x, train_y, test_x, test_y, probs, inv_laplace_unlab
+    # return train_x, train_y, test_x, test_y, probs, laplace_uu
+    return train_x, train_y, test_x, test_y
 
 def CrossValidate(clf, train_x, train_y, test_x, test_y, cv_metrics):
     """
@@ -193,12 +223,14 @@ def CrossValidate(clf, train_x, train_y, test_x, test_y, cv_metrics):
     return res
 
 def SimulateZLG(x: np.ndarray,
-                y:np.ndarray,
+                y: np.ndarray,
                 seed:int,
                 clf: any,
                 cv_metrics: list[str],
                 init_frac:float,
-                end_frac:float) -> tuple:
+                end_frac:float,
+                t: float = None,
+                n: int = 10) -> tuple:
     """
     Calculates the risk of adding an unlabled sample to the labeled data for all unlabeled samples.
     Input:
@@ -209,6 +241,11 @@ def SimulateZLG(x: np.ndarray,
     cv_metrics (list[str]): The metrics to record for cross_validation.
     init_frac (float): The starting percentage of the training data.
     end_frac (float): The ending percentage of the training data.
+    t (float): Cutoff for whether edge in graph exists. If W[i,j] > t then the edge exists. Otherwise there is no 
+        edge connecting node i to node j.
+        If t is None. Then instead of using a cutoff. The largest n values in a row are kept while the rest are set to
+        0.
+    n (int): The minimum number of neighbors each vertex will have. Only used if t is None.
 
     Ouput:
     Tuple of lists. Each list is a record of the scores at each iteration.
@@ -221,25 +258,18 @@ def SimulateZLG(x: np.ndarray,
                                         shuffle=True,
                                         stratify=y,
                                         random_state = seed) 
-    
-    similarity = Similarity(train_x, test_x)
-    weights = BuildGraphAsMatrix(similarity)
-    d_matrix = ConstructD(weights)
-    laplacian = ConstructLaplacian(weights,d_matrix)
-    probs, inv_laplace_unlab = SolveHarmonics(laplacian,train_y)
 
-    size_log = []
-    logs = []
+    size_log, logs = [], []
     n_iters = int(end_frac*x.shape[0])-train_x.shape[0]
-    for _ in range(n_iters):        
+    for i in range(n_iters):
+        probs, laplace_uu = InitFromTestAndTrain(train_x, train_y, test_x, t, n)
         res = CrossValidate(clf, train_x, train_y, test_x, test_y, cv_metrics)
         logs.append(res)
         size_log.append(train_x.shape[0])
 
-        train_x, train_y, test_x, test_y, probs, inv_laplace_unlab = ZLGOneIter(
-            train_x, train_y, test_x, test_y, probs, inv_laplace_unlab
+        train_x, train_y, test_x, test_y = ZLGOneIter(
+            train_x, train_y, test_x, test_y, probs, laplace_uu
         )
-
 
     res = CrossValidate(clf, train_x, train_y, test_x, test_y, cv_metrics)
     logs.append(res)
@@ -268,6 +298,14 @@ def ReadExercise2Data(filepath):
 
 if __name__ == "__main__":
     feat, labels = ReadExercise2Data('ex2_data.csv')
+
+    # filepath = 'ex2_data.csv'
+    # x, y = ReadExercise2Data(filepath)
+
+    # from sklearn.linear_model import LogisticRegression
+    # clf = LogisticRegression()
+    # cv_metric = ['neg_log_loss','accuracy']
+    # SimulateZLG(x,y,2024,clf,cv_metric,0.3,1.0,0.5)
     
     # Testing Similarity Function
     # test_var = Similarity(feat)
