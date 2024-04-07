@@ -5,3 +5,4 @@ venv/
 *.png
 *.zip
 *.npy
+*/*/__pycache__
