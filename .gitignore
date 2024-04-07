@@ -7,3 +7,4 @@ venv/
 *.npy
 */*/__pycache__
 *.txt
+*.DS_store
