@@ -39,7 +39,7 @@ def E_optimal(X):
     """
     return -np.min(np.linalg.eigvals(X.T@X))
 
-def DOE(X, Y, k, seed, cap, threshold, metric):
+def DOE(X, Y, k, seed, cap, metric):
     """
     Design of experiments
     Input:
@@ -66,47 +66,44 @@ def DOE(X, Y, k, seed, cap, threshold, metric):
     current_k = start_k
     current_score = metric(current_X)
     # print(current_score)
-    delta = np.inf
-    while i < cap and np.abs(delta) > threshold:
+    delta = -1
+    while i < cap and delta < 0:
         # Choose the sample in the training set to replace
-        replace_idx = rng.integers(0, k)
+        # replace_idx = rng.integers(0, k)
+        i += 1
+
+        best_score = np.inf
+        best_k = current_k.copy()
         mask = np.array([True for _ in range(X.shape[0])], dtype = bool)
         mask[current_k] = False
         viable_idx = np.arange(0, X.shape[0])[mask]
+        for replace_idx in range(k):
+            # Weight the samples not in the training set.
+            weights = np.zeros(viable_idx.shape[0])
+            for idx, j in enumerate(viable_idx):
+                new_k = current_k.copy()
+                new_k[replace_idx] = j
+                new_x = X[new_k]
+                weights[idx] = metric(new_x)
+            new_idx = viable_idx[np.argmin(weights)]
 
-        # Weight the samples not in the training set.
-        weights = np.zeros(viable_idx.shape[0])
-        for idx, j in enumerate(viable_idx):
             new_k = current_k.copy()
-            new_k[replace_idx] = j
+            new_k[replace_idx] = new_idx
+            if len(np.unique(new_k)) < k:
+                breakpoint()
             new_x = X[new_k]
-            weights[idx] = metric(new_x)
-
-        # Calculates the weights
-        normalize_value = np.sum(weights)
-        weights /= normalize_value
-        if normalize_value > 0:
-            weights = 1/weights
-            weights /= np.sum(weights)
-
-        # new_idx = rng.choice(viable_idx, p=weights)
-        new_idx = viable_idx[np.argmax(weights)]
-        new_k = current_k.copy()
-        new_k[replace_idx] = new_idx
-        new_x = X[new_k]
-        new_score = metric(new_x)
-        delta = new_score-current_score
+            new_score = metric(new_x)
+            if new_score < best_score:
+                best_score = new_score
+                best_k = new_k
+        
+        delta = best_score-current_score
         if delta < 0:
-            current_k = new_k
-            current_score = new_score
-        else:
-            if rng.random() < weights[np.where(viable_idx==new_idx)]:
-                current_k = new_k
-                current_score = new_score
-
-        i += 1
+            current_k = best_k
+            current_score = best_score
+        
     # print(f'DOE Best {current_score}')
-    
+
     return current_score, current_k
 
 
@@ -150,6 +147,9 @@ if __name__ == '__main__':
     args = parser.parse_args()
     filepath = args.filepath
     X, Y = ReadExercise1(filepath)
+
+    doe_score, doe_idxs = DOE(X,Y, k=30, seed=2024, threshold= 1e-9, cap=20, metric=D_optimal)
+
 
 # ALICE But I don't know how to get pTest
 # def MakeU(x, ptest, order):

@@ -271,6 +271,7 @@ def SimulateZLG(x: np.ndarray,
             train_x, train_y, test_x, test_y, probs, laplace_uu
         )
 
+    np.random.seed(seed)
     res = CrossValidate(clf, train_x, train_y, test_x, test_y, cv_metrics)
     logs.append(res)
     

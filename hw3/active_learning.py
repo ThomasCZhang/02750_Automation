@@ -389,7 +389,7 @@ def InitialSplit(x: np.ndarray, y: np.ndarray,
     end_frac (float): value between 0 and 1. Proportion of data to use for final model after active learning.
     """
     if init_method == "DOE":
-        _, starting_k = DOE(x, y, int(init_frac*x.shape[0]), seed=seed, cap=5000, threshold=1e-8, metric=A_optimal)
+        _, starting_k = DOE(x, y, int(init_frac*x.shape[0]), seed=seed, cap=50, metric=D_optimal)
         mask = np.ones(x.shape[0])
         mask[starting_k] = False
         mask = np.array(mask, dtype=bool)
@@ -419,6 +419,15 @@ def TestLog(clf, train_x, train_y, test_x, test_y, cv_metrics, params: dict[str,
     pred_y = clf.predict(test_x)
     res = mean_squared_error(test_y, pred_y)
     return [res]
+
+def CrossValAndTestLog(clf, train_x, train_y, test_x, test_y, cv_metrics, params: dict[str, np.ndarray]=None):
+    cv_res = cross_validate(clf, train_x, train_y, params = params, scoring = cv_metrics)
+    res = [np.mean(cv_res['test_'+cv_metric]) for cv_metric in cv_metrics]
+    clf.fit(train_x, train_y)
+    pred_y = clf.predict(test_x)
+    res.append(mean_squared_error(test_y, pred_y))
+
+    return res
 
 def SimulateAL_MP(x: np.ndarray, y: np.ndarray,
                 method: str, seed: int, clf: any ,cv_metrics: list[str],
@@ -498,9 +507,11 @@ def SimulateAL_MP(x: np.ndarray, y: np.ndarray,
                     densities = densities, iwal_weights=iwal_weights,
                     method = method, b=b, k = k , pmin = pmin, rng = rng)
 
-    param = None    
+    param = None  
     if method == 'IWAL':
-        param = {'sample_weight': iwal_weights}
+        param = {}
+        param['sample_weight'] = iwal_weights
+    np.random.seed(seed)
     res = logging_func(clf, train_x, train_y, test_x, test_y, cv_metrics, param)
 
     logs.append(res)
