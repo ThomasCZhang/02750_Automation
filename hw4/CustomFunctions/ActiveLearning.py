@@ -2,15 +2,15 @@ import numpy as np
 import multiprocessing as mp
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split, cross_validate
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_squared_error, accuracy_score, log_loss
 
-from CustomFunctions.DOE import *
-from CustomFunctions.DensitySampling import *
-from CustomFunctions.ExpectedRiskMinimization import *
-from CustomFunctions.IWAL import *
-from CustomFunctions.PassiveLearning import *
-from CustomFunctions.QueryByCommittee import *
-from CustomFunctions.UncertaintySampling import *
+from DOE import *
+from DensitySampling import *
+from ExpectedRiskMinimization import *
+from IWAL import *
+from PassiveLearning import *
+from QueryByCommittee import *
+from UncertaintySampling import *
 
 def InitialSplit(x: np.ndarray, y: np.ndarray,
                 seed: int,
@@ -58,8 +58,8 @@ def TestLog(clf, train_x, train_y, test_x, test_y, cv_metrics, params: dict[str,
     """
     clf.fit(train_x, train_y)
     pred_y = clf.predict(test_x)
-    res = mean_squared_error(test_y, pred_y)
-    return [res]
+    acc_res = accuracy_score(test_y, pred_y)
+    return [acc_res]
 
 def CrossValAndTestLog(clf, train_x, train_y, test_x, test_y, cv_metrics, params: dict[str, np.ndarray]=None):
     cv_res = cross_validate(clf, train_x, train_y, params = params, scoring = cv_metrics)
@@ -126,7 +126,7 @@ def SimulateAL(x: np.ndarray, y: np.ndarray,
 
     size_log = []
     logs = []
-    n_iters = int(end_frac*x.shape[0])-train_x.shape[0]
+    n_iters = int(np.ceil((int(end_frac*x.shape[0])-train_x.shape[0])/batch_size))
     for _ in range(n_iters):
         param = {'sample_weight': active_learning_method.weights} if method == 'IWAL' else None
         train_x, train_y, test_x, test_y = active_learning_method.GetData()
@@ -146,3 +146,28 @@ def SimulateAL(x: np.ndarray, y: np.ndarray,
     logs.append(res)
 
     return logs
+
+if __name__ == "__main__":
+
+
+    filepath = "hw4_ex2_data.csv"
+
+    data = []
+    with open(filepath) as f:
+        header = f.readline().strip().split(',')
+        print('Header Categories:', end = " ")
+        for i, category in enumerate(header): print(f"col {i}: {category}    ", end = "")
+        for line in f:
+            line = line.strip().split(',')
+            line = [float(x) for x in line]
+            data.append(line)
+    data = np.array(data)
+    x = data[:, :2]
+    y = data[:, 2]
+    print(f'\nThe shape of the data is: {data.shape}\nFeature shape: {x.shape}\nLabel shape: {y.shape}')
+    print(f'Number of unique classes {len(np.unique(y))}')
+
+    from sklearn.base import clone
+    from sklearn.linear_model import LogisticRegression
+    clf = LogisticRegression()
+    print(len(SimulateAL(x,y,'US', 2024, clone(clf), [], y, None, 5/x.shape[0], 0.5, TestLog, True, 3)))

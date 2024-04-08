@@ -1,4 +1,4 @@
-from CustomFunctions.UpdaterClass import *
+from UpdaterClass import *
 import numpy as np
 
 class UncertaintySampling(ActiveLearningUpdater):

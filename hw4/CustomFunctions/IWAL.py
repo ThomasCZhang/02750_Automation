@@ -3,7 +3,7 @@ from sklearn.utils import resample
 from sklearn.base import clone
 from sklearn.metrics import log_loss
 
-from CustomFunctions.UpdaterClass import *
+from UpdaterClass import *
 import numpy as np
 
 class IWAL(ActiveLearningUpdater):
