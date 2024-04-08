@@ -20,20 +20,28 @@ class ActiveLearningUpdater():
         self.rng = np.random.default_rng(seed)
         pass
 
-    def UpdateLabeledData(self, idx, move:bool=True):
+    def UpdateLabeledData(self, idxs, move:bool=True):
         """
         Updates the labeled data by moving one sample from the unlabeled data to
         the labeled data.
         Input:
-        idx (int): The index of the unlabeled sample to move to the labeled data.
+        idxs (np.ndarray or int): Numpy array of indicies or single index to move from unlabeled to labeled.
         move (bool): Whether to move the sample from the unlabeled to labeled.
             If false, only deletes sample from unlabeled and does NOT add to labeled set.
         """
         if move:
-            self.x_lab = np.vstack((self.x_lab, self.x_unlab[idx]))
-            self.y_lab = np.append(self.y_lab, self.y_unlab[idx])
-        self.x_unlab = np.delete(self.x_unlab, idx, axis = 0)
-        self.y_unlab = np.delete(self.y_unlab, idx, axis = 0)
+            self.x_lab = np.vstack((self.x_lab, self.x_unlab[idxs]))
+            self.y_lab = np.append(self.y_lab, self.y_unlab[idxs])
+        self.x_unlab = np.delete(self.x_unlab, idxs, axis = 0)
+        self.y_unlab = np.delete(self.y_unlab, idxs, axis = 0)
+
+    def GetData(self):
+        """
+        Returns the current labeled and unlabeled data.
+
+        Output: x_labeled, y_labeled, x_unlabeled, y_unlabeled
+        """
+        return self.x_lab, self.y_lab, self.x_unlab, self.y_unlab
 
 
 

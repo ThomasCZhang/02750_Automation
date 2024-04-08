@@ -7,23 +7,25 @@ class DensitySampling(ActiveLearningUpdater):
         self.densities = self.CalculateDensity()
         pass
 
-    def Update(self, clf, n_models:int=50, beta:float=0.7):
+    def Update(self, clf, batch_size:int=1, n_models:int=50, beta:float=0.7):
         """
         Updates the labeled and unlabeled data by performing one iteration of active learning.
         Input:
         clf: The classifier
+        batch_size (int): Number of samples to move from unlabeled to labeled set.
         n_models: Number of models to use for query by committee.
         """
         utility_vector = self.CalculateUtility(clf,n_models,beta)
         
         if self.aggressive:
-            next_idx = np.argmax(utility_vector)
+            next_indicies = np.argsort(utility_vector)[-batch_size:]
         else:
             utility_vector = utility_vector/np.sum(utility_vector)
-            next_idx = self.rng.choice(np.arange(utility_vector.shape[0]), p=utility_vector)
+            next_indicies = self.rng.choice(np.arange(utility_vector.shape[0]), size=batch_size, p=utility_vector)
        
-        self.UpdateDensity(next_idx)
-        self.UpdateLabeledData(next_idx)
+        for next_idx in reversed(sorted(next_indicies)):
+            self.UpdateDensity(next_idx)
+            self.UpdateLabeledData(next_idx)
     
     def CalculateUtility(self, clf,n_models:int=50,beta:float=0.7):
         """

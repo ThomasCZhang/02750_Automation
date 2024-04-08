@@ -78,7 +78,7 @@ def SimulateAL(x: np.ndarray, y: np.ndarray,
                 end_frac: float=None,
                 logging_func: any=None,
                 aggressive: bool = True,
-                conn: mp.connection.Connection = None,
+                batch_size: int=1
                 ):
     """
     Simulates active learning using the designated active learning method.
@@ -101,7 +101,7 @@ def SimulateAL(x: np.ndarray, y: np.ndarray,
     end_frac (float): value between 0 and 1. Proportion of data to use for final model after active learning.
     logging_func (function): used to calculate the stuff to log. 
     aggressive (bool): Use aggressive active learning. Default is True.
-    conn (mp.connection.PipeConnection): A connector that sends data.
+    batch_size (int): The number of samples to add at once. Default is 1.
 
     Output:
     Returns the accuracy and loss logs across the iterations of the active learning simulation
@@ -114,10 +114,6 @@ def SimulateAL(x: np.ndarray, y: np.ndarray,
     train_x, test_x, train_y, test_y = InitialSplit(x, y, seed, stratify_data=stratify_data,
                                     init_method = init_method, init_frac = init_frac)
 
-    size_log = []
-    logs = []
-    n_iters = int(end_frac*x.shape[0])-train_x.shape[0]
-
     strategy_dict = {
         "PL": PassiveLearning,
         "US": UncertaintySampling,
@@ -126,43 +122,27 @@ def SimulateAL(x: np.ndarray, y: np.ndarray,
         "DBS": DensitySampling,
         "IWAL": IWAL,
     }
-
     active_learning_method = strategy_dict[method](train_x, train_y, test_x, test_y, aggressive)
 
+    size_log = []
+    logs = []
+    n_iters = int(end_frac*x.shape[0])-train_x.shape[0]
     for _ in range(n_iters):
-        param = None
-        if method == 'IWAL':
-            param = {'sample_weight': active_learning_method.weights}
-        
-        train_x = active_learning_method.x_lab
-        train_y = active_learning_method.y_lab
-        test_x = active_learning_method.x_unlab
-        test_y = active_learning_method.y_unlab
-
-        # print(f"x_labeled: {train_x.shape}\ny_labeled: {train_y.shape}\n"+
-        #       f"x_unlabled: {test_x.shape}\ny_unlabeled: {test_y.shape}")
+        param = {'sample_weight': active_learning_method.weights} if method == 'IWAL' else None
+        train_x, train_y, test_x, test_y = active_learning_method.GetData()
 
         res = logging_func(clf, train_x, train_y, test_x, test_y, cv_metrics, param)
         logs.append(res)
         size_log.append(train_x.shape[0])
 
-        active_learning_method.Update(clf)
+        active_learning_method.Update(clf, batch_size=batch_size)
 
-    param = None  
-    if method == 'IWAL':
-        param = {'sample_weight': active_learning_method.weights}
-
-    train_x = active_learning_method.x_lab
-    train_y = active_learning_method.y_lab
-    test_x = active_learning_method.x_unlab
-    test_y = active_learning_method.y_unlab
+    param = {'sample_weight': active_learning_method.weights} if method == 'IWAL' else None
+    train_x, train_y, test_x, test_y = active_learning_method.GetData()
 
     np.random.seed(seed)
     res = logging_func(clf, train_x, train_y, test_x, test_y, cv_metrics, param)
 
     logs.append(res)
 
-    if conn is not None:
-        conn.send(logs)
-    else:
-        return logs
+    return logs

@@ -17,34 +17,34 @@ class IWAL(ActiveLearningUpdater):
         else: 
             self.b =(x_lab.shape[0] + x_unlab.shape[0])//5
     
-    def Update(self, clf, n_models:int=50):
+    def Update(self, clf,  batch_size:int=1, n_models:int=50):
         """
         Updates the labeled and unlabeled data by performing one iteration of IWAL.
         Input:
         clf: The classifier
+        batch_size (int): Number of samples to move from unlabeled to labeled set.
         n_models: The number of models to use for creating a committee to calculate IWAL threshold.
         """
         utility_vector = self.CalculateUtility()
         
         if self.aggressive:
-            next_idx = np.argmax(utility_vector)
+            next_indicies = np.argsort(utility_vector)[-batch_size:]
         else:
             utility_vector = utility_vector/np.sum(utility_vector)
-            next_idx = self.rng.choice(np.arange(utility_vector.shape[0]), p=utility_vector)
+            next_indicies = self.rng.choice(np.arange(utility_vector.shape[0]), size=batch_size, p=utility_vector)
 
-        pt = self.IWALRejectionThreshold(clf, next_idx, n_models)
-        rn = self.rng.uniform(0., 1., 1)
-        if rn < pt:
-            self.UpdateLabeledData(next_idx)
-            self.weights = np.append(self.weights, [self.pmin/pt])
-        else:
-            self.UpdateLabeledData(next_idx, False)
+        for next_idx in reversed(sorted(next_indicies)):
+            pt = self.IWALRejectionThreshold(clf, next_idx, n_models)
+            rn = self.rng.uniform(0., 1., 1)
+            if rn < pt:
+                self.UpdateLabeledData(next_idx)
+                self.weights = np.append(self.weights, [self.pmin/pt])
+            else:
+                self.UpdateLabeledData(next_idx, False)
 
 
     def CalculateUtility(self):
-        utility = np.zeros(self.x_unlab.shape[0])
-        idx = self.rng.integers(0, self.x_unlab.shape[0])
-        utility[idx] = 1
+        utility = self.rng.random(self.x_unlab.shape[0])
         return utility
     
     def IWALRejectionThreshold(self, clf, next_idx:int, n_models: int=50):

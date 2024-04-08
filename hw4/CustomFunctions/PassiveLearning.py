@@ -6,25 +6,24 @@ class PassiveLearning(ActiveLearningUpdater):
         super().__init__(x_lab, y_lab, x_unlab,y_unlab, aggressive, seed)
         pass
     
-    def Update(self, clf):
+    def Update(self, clf, batch_size:int=1):
         """
         Updates the labeled and unlabeled data by performing one iteration of active learning.
         Input:
         clf: The classifier
+        batch_size (int): Number of samples to move from unlabeled to labeled set.
         """
         utility_vector = self.CalculateUtility(clf)
         
         if self.aggressive:
-            next_idx = np.argmax(utility_vector)
+            next_indicies = np.argsort(utility_vector)[-batch_size:]
         else:
             utility_vector = utility_vector/np.sum(utility_vector)
-            next_idx = self.rng.choice(np.arange(utility_vector.shape[0]), p=utility_vector)
+            next_indicies = self.rng.choice(np.arange(utility_vector.shape[0]), size=batch_size, p=utility_vector)
 
-        self.UpdateLabeledData(next_idx)
+        self.UpdateLabeledData(next_indicies)
 
     def CalculateUtility(self):
-        utility = np.zeros(self.x_unlab.shape[0])
-        idx = self.rng.integers(0, self.x_unlab.shape[0])
-        utility[idx] = 1
+        utility = self.rng.random(self.x_unlab.shape[0])
         return utility
 
