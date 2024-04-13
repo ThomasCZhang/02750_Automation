@@ -2,8 +2,9 @@ from UpdaterClass import *
 import numpy as np
 
 class QueryByCommittee(ActiveLearningUpdater):
-    def __init__(self, x_lab, y_lab, x_unlab, y_unlab, aggressive: bool=True, seed: int=0) -> None:
-        super().__init__(x_lab, y_lab, x_unlab,y_unlab, aggressive, seed)
+    def __init__(self, x_lab, y_lab, x_unlab, y_unlab, unlab_cost: np.ndarray=None,
+                 aggressive: bool=True, seed: int=0) -> None:
+        super().__init__(x_lab, y_lab, x_unlab,y_unlab, unlab_cost, aggressive, seed)
         pass
 
     def Update(self, clf, batch_size:int=1, n_models: int = 50):

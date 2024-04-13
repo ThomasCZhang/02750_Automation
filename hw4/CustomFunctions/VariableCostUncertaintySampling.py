@@ -1,19 +1,14 @@
 from UpdaterClass import *
 import numpy as np
 
-class UncertaintySampling(ActiveLearningUpdater):
-    def __init__(self, x_lab, y_lab, x_unlab, y_unlab,
-                  unlab_cost: np.ndarray=None, aggressive: bool=True, seed: int=0) -> None:
-        super().__init__(x_lab, y_lab, x_unlab,y_unlab,unlab_cost, aggressive, seed)
-        pass
-    
-    def Update(self, clf, batch_size: int=1):
-        """
-        Updates the labeled and unlabeled data by performing one iteration of active learning.
-        Input:
-        clf: The classifier
-        batch_size (int): Number of samples to move from unlabeled to labeled set.
-        """
+class VariableCostUncertaintySampling(ActiveLearningUpdater):
+    def __init__(self, x_lab, y_lab, x_unlab, y_unlab, unlab_cost: np.ndarray=None, aggressive: bool = True, seed: int = 0) -> None:
+        super().__init__(x_lab, y_lab, x_unlab, y_unlab, unlab_cost, aggressive, seed)
+        if unlab_cost is None:
+            raise Exception("Did not give cost vector.")
+        self.spent = 0
+
+    def Update(self, clf, batch_size:int=1):
         utility_vector = self.CalculateUtility(clf)
         
         if self.aggressive:
@@ -23,10 +18,12 @@ class UncertaintySampling(ActiveLearningUpdater):
             next_indicies = self.rng.choice(np.arange(utility_vector.shape[0]), size=batch_size, p=utility_vector)
 
         self.UpdateLabeledData(next_indicies)
+        self.spent += np.sum(self.cost[next_indicies])
+        self.cost = np.delete(self.cost, next_indicies, axis = 0)
 
     def CalculateUtility(self, clf):
         """
-        Returns the utility vector (uncertainty) of the unlabeled data used by Uncertainty sampling. 
+        Returns the utility vector (uncertainty) of the unlabeled data used by Uncertainty sampling with cost. 
         Input:
         clf: the classifier
 
@@ -41,4 +38,5 @@ class UncertaintySampling(ActiveLearningUpdater):
             uncertainty = uncertainty[:, np.newaxis]
         entropy = uncertainty*np.log2(uncertainty+1e-20)
         entropy = -np.sum(entropy, axis = 1)
-        return entropy
+        utility = entropy/np.max(entropy) - self.cost/np.max(self.cost)
+        return utility
