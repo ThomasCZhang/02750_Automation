@@ -3,7 +3,7 @@ from sklearn.base import clone
 from sklearn.utils import resample
 
 class ActiveLearningUpdater():
-    def __init__(self, x_lab, y_lab, x_unlab, y_unlab, unlab_cost, aggressive: bool=True, seed: int=0) -> None:
+    def __init__(self, x_lab, y_lab, x_unlab, y_unlab, unlab_cost, task, aggressive: bool=True, seed: int=0) -> None:
         """
         Inputs:
         x_lab (np.ndarray): features of labeled data 
@@ -17,6 +17,7 @@ class ActiveLearningUpdater():
         self.x_unlab = x_unlab
         self.y_unlab = y_unlab
         self.cost = unlab_cost
+        self.task = task
         self.aggressive = aggressive
         self.rng = np.random.default_rng(seed)
         pass

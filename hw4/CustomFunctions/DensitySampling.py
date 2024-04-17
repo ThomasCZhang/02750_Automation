@@ -3,8 +3,8 @@ import numpy as np
 
 class DensitySampling(ActiveLearningUpdater):
     def __init__(self, x_lab, y_lab, x_unlab, y_unlab,
-                unlab_cost: np.ndarray=None, aggressive: bool=True, seed: int=0) -> None:
-        super().__init__(x_lab, y_lab, x_unlab,y_unlab, unlab_cost, aggressive, seed)
+                unlab_cost: np.ndarray=None, task: str=None, aggressive: bool=True, seed: int=0) -> None:
+        super().__init__(x_lab, y_lab, x_unlab,y_unlab, unlab_cost, task, aggressive, seed)
         self.densities = self.CalculateDensity()
         pass
 

@@ -2,8 +2,9 @@ from UpdaterClass import *
 import numpy as np
 
 class RandomCost(ActiveLearningUpdater):
-    def __init__(self, x_lab, y_lab, x_unlab, y_unlab, unlab_cost: np.ndarray=None, aggressive: bool = True, seed: int = 0) -> None:
-        super().__init__(x_lab, y_lab, x_unlab, y_unlab, unlab_cost, aggressive, seed)
+    def __init__(self, x_lab, y_lab, x_unlab, y_unlab, unlab_cost: np.ndarray=None, task: str=None,
+                aggressive: bool = True, seed: int = 0) -> None:
+        super().__init__(x_lab, y_lab, x_unlab, y_unlab, unlab_cost, task, aggressive, seed)
         if unlab_cost is None:
             raise Exception("Did not give cost vector.")
         self.spent = 0

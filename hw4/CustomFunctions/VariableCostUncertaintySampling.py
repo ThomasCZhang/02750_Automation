@@ -2,8 +2,9 @@ from UpdaterClass import *
 import numpy as np
 
 class VariableCostUncertaintySampling(ActiveLearningUpdater):
-    def __init__(self, x_lab, y_lab, x_unlab, y_unlab, unlab_cost: np.ndarray=None, aggressive: bool = True, seed: int = 0) -> None:
-        super().__init__(x_lab, y_lab, x_unlab, y_unlab, unlab_cost, aggressive, seed)
+    def __init__(self, x_lab, y_lab, x_unlab, y_unlab,
+                unlab_cost: np.ndarray=None, task:str=None, aggressive: bool = True, seed: int = 0) -> None:
+        super().__init__(x_lab, y_lab, x_unlab, y_unlab, unlab_cost, task, aggressive, seed)
         if unlab_cost is None:
             raise Exception("Did not give cost vector.")
         self.spent = 0
@@ -30,13 +31,17 @@ class VariableCostUncertaintySampling(ActiveLearningUpdater):
         Output:
         (np.ndarray) The utility vector that should be maximized to find the next index
         """
-        active_model = clf.fit(self.x_lab, self.y_lab)
-        try:
-            uncertainty = active_model.predict_proba(self.x_unlab)
-        except:
+        clf.fit(self.x_lab, self.y_lab)
+        if self.task == 'classification': # For Classification
+            uncertainty = clf.predict_proba(self.x_unlab)
+        elif self.task == 'regression': # For regression
             uncertainty = np.sum(self.x_unlab@np.linalg.pinv(self.x_unlab.T@self.x_unlab)*self.x_unlab, axis=1)
             uncertainty = uncertainty[:, np.newaxis]
+        else:
+            raise Exception('Mode must be classification or regression.')
+        
         entropy = uncertainty*np.log2(uncertainty+1e-20)
-        entropy = -np.sum(entropy, axis = 1)
+        entropy = -np.sum(entropy, axis = 1) 
+
         utility = entropy/np.max(entropy) - self.cost/np.max(self.cost)
         return utility

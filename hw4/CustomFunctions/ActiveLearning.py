@@ -15,6 +15,7 @@ from DiversitySampling import *
 from VariableCostUncertaintySampling import *
 from LowestCost import *
 from RandomCost import *
+from DeepBatchActiveLearning import *
 
 def InitialSplit(x: np.ndarray, y: np.ndarray,
                 seed: int,
@@ -78,6 +79,7 @@ def ChooseActiveLearningMethod(x: np.ndarray, y: np.ndarray,
                                 cost: np.ndarray=None,
                                 method: str='US',
                                 seed: int=1,
+                                task: str=None,
                                 stratify_data: np.ndarray=None,
                                 init_method: str=None,
                                 init_frac: float=None,
@@ -99,7 +101,9 @@ def ChooseActiveLearningMethod(x: np.ndarray, y: np.ndarray,
         VCUS: Variable Cost Uncertainty Sampling
         LC: Lowest Cost
         RC: Random Cost
+        DBAL: Deep Batch Active Learning
     seed (int): A seed for the numpy random number generator.
+    task (str): "classification" or "regression"
     stratify_data (np.ndarray): the data to stratify on if using train-test split
     init_method (str): if "DOE" uses DOE to initialize. Otherwise does a stratified train-test split.
     init_frac (float): Value between 0 and 1. Proportion of data (labeled data) to use for initial model.
@@ -125,8 +129,9 @@ def ChooseActiveLearningMethod(x: np.ndarray, y: np.ndarray,
         "VCUS": VariableCostUncertaintySampling,
         "LC": LowestCost,
         "RC": RandomCost,
+        "DBAL": DBAL,
     }
-    active_learning_method = strategy_dict[method](train_x, train_y, test_x, test_y, cost, aggressive)
+    active_learning_method = strategy_dict[method](train_x, train_y, test_x, test_y, cost, task, aggressive)
     return active_learning_method
 
 def ActiveLearningOneLoop(active_learning_method: any,
@@ -141,7 +146,7 @@ def ActiveLearningOneLoop(active_learning_method: any,
     Performs one iteration of the active learning loop
     Input:
     active_learning_method (ActiveLearningUpdater): Custom active learning updater class.
-    method (str): The method used for active learning.
+    method (str): The active learning method to use.
         PL: Passive Learning
         US: Uncertainty sampling
         QBC: Querry by committee
@@ -149,6 +154,10 @@ def ActiveLearningOneLoop(active_learning_method: any,
         DBS: Density Sampling
         IWAL: Importance Weighted Active Learning
         DVS: Diversity Sampling
+        VCUS: Variable Cost Uncertainty Sampling
+        LC: Lowest Cost
+        RC: Random Cost
+        DBAL: Deep Batch Active Learning
     clf (sklearn model): The sklearn model.
     cv_metrics (list[str]): The list of metrics to measure using sklearn cross validation
     logging_func (function): The custom function used to get the logging metrics.
@@ -169,7 +178,8 @@ def SimulateAL(x: np.ndarray, y: np.ndarray,
                 cost: np.ndarray=None,
                 method: str='US',
                 seed: int=1,
-                clf: any=None ,
+                clf: any=None,
+                task: str=None,
                 cv_metrics: list[str]=None,
                 stratify_data: np.ndarray=None,
                 init_method: str=None,
@@ -197,8 +207,10 @@ def SimulateAL(x: np.ndarray, y: np.ndarray,
         VCUS: Variable Cost Uncertainty Sampling
         LC: Lowest Cost
         RC: Random Cost
+        DBAL: Deep Batch Active Learning
     seed (int): The random seed for the numpy random generator   
     clf (SKlearn classifier): The classifier to use
+    task (str): "classification" or "regression".
     cv_metrics (list[str]): Input arguments to the scoring argument of sklearns cross validation.
     stratify_data (np.ndarray): The data to use for stratifying when performing train_test_split.
     init_method (str): if "DOE" uses DOE to initialize. Otherwise does a stratified train-test split.
@@ -215,7 +227,7 @@ def SimulateAL(x: np.ndarray, y: np.ndarray,
 
     preprocess = StandardScaler()
     x = preprocess.fit_transform(x)    
-    active_learning_method = ChooseActiveLearningMethod(x, y, cost, method, seed,
+    active_learning_method = ChooseActiveLearningMethod(x, y, cost, method, seed, task,
                                                         stratify_data, init_method, init_frac, aggressive)
     size_log, logs = [], []
     n_iters = int(np.ceil((int(end_frac*x.shape[0])-active_learning_method.x_lab.shape[0])/batch_size))

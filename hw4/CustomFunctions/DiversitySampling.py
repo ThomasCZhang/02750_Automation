@@ -4,8 +4,8 @@ import numpy as np
 
 class DiversitySampling(ActiveLearningUpdater):
     def __init__(self, x_lab, y_lab, x_unlab, y_unlab,
-                unlab_cost: np.ndarray=None,aggressive: bool=True, seed: int=0) -> None:
-        super().__init__(x_lab, y_lab, x_unlab,y_unlab,unlab_cost, aggressive, seed)
+                unlab_cost: np.ndarray=None, task: str=None, aggressive: bool=True, seed: int=0) -> None:
+        super().__init__(x_lab, y_lab, x_unlab,y_unlab,unlab_cost,task,aggressive, seed)
         pass
     
     def Update(self, clf, batch_size: int=1):
@@ -39,14 +39,24 @@ class DiversitySampling(ActiveLearningUpdater):
         cluster_model = KMeans(n_clusters=batch_size)
         cluster_model.fit(self.x_unlab)
         groups = cluster_model.predict(self.x_unlab)
-        distances = cluster_model.transform(self.x_unlab)
 
-        mask = np.ones(distances.shape, dtype = bool)
-        mask[np.arange(n_unlab), groups] = False
-
-        distances[mask] = np.inf
-        
         utility = np.zeros(n_unlab)
-        utility[np.argmin(distances, axis = 0)] = 1        
+        # # Take sample from each cluster that is closest to cluster center
+        # distances = cluster_model.transform(self.x_unlab)
+        # mask = np.ones(distances.shape, dtype = bool)
+        # mask[np.arange(n_unlab), groups] = False
+
+        # # Set distances from sample to cluster center to infinity if that sample isn't a assigned to that cluster
+        # distances[mask] = np.inf 
+        # utility[np.argmin(distances, axis = 0)] = 1        
+
+        # Take one sample from each cluster weighted randomly.
+        for i in range(batch_size):
+            distances = cluster_model.transform(self.x_unlab)
+            group_idxs = np.nonzero(groups == i)[0]
+            p = 1/distances[group_idxs,i].squeeze()
+            p = p/np.sum(p)
+            idx = self.rng.choice(group_idxs, p=p)
+            utility[idx] = 1
 
         return utility

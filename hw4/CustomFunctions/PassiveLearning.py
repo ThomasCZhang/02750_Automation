@@ -2,9 +2,9 @@ from UpdaterClass import *
 import numpy as np
 
 class PassiveLearning(ActiveLearningUpdater):
-    def __init__(self, x_lab, y_lab, x_unlab, y_unlab,unlab_cost: np.ndarray=None,
+    def __init__(self, x_lab, y_lab, x_unlab, y_unlab,unlab_cost: np.ndarray=None, task: str=None,
                   aggressive: bool=True, seed: int=0) -> None:
-        super().__init__(x_lab, y_lab, x_unlab,y_unlab, unlab_cost, aggressive, seed)
+        super().__init__(x_lab, y_lab, x_unlab,y_unlab, unlab_cost, task, aggressive, seed)
         pass
     
     def Update(self, clf, batch_size:int=1):

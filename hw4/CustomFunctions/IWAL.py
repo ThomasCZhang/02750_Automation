@@ -8,8 +8,9 @@ import numpy as np
 
 class IWAL(ActiveLearningUpdater):
     def __init__(self, x_lab, y_lab, x_unlab, y_unlab,
-                unlab_cost: np.ndarray=None, aggressive: bool=True, seed: int=0, pmin: float = 0.1, b:int=None) -> None:
-        super().__init__(x_lab, y_lab, x_unlab,y_unlab,unlab_cost, aggressive, seed)
+                unlab_cost: np.ndarray=None,  task: str=None,
+                aggressive: bool=True, seed: int=0, pmin: float = 0.1, b:int=None) -> None:
+        super().__init__(x_lab, y_lab, x_unlab,y_unlab,unlab_cost, task, aggressive, seed)
         self.pmin = pmin
         self.weights = np.ones(self.x_lab.shape[0])*pmin
         if b is not None:
